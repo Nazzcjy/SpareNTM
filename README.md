@@ -43,6 +43,8 @@ topic diversity: TU.
 
 topic quality: NPMI x TU
 
+For computing the NPMI, the [external data](https://drive.google.com/file/d/1FQGUmAPcU2wWQlDQAFwTC2E3zGbhJDq2/view?usp=sharing) should be downloaded to the current directory `./` as `./ref_corpus`
+
     bash run_computeQuality.sh
 
 ## Citation
