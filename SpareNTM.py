@@ -431,6 +431,9 @@ def main(argv=None):
     warm_up_period = args.warm_up_period
     n_topic = args.n_topic
 
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
+
     train_url = args.data_dir + '/train.txt'
     test_url = os.path.join(args.data_dir, 'test.txt')
 
@@ -465,6 +468,8 @@ def main(argv=None):
     phi, theta, topic_selected, n_seleted = train(sess, sparentm, args.bs, vocab_size, corpus, counts, train_test_idxes,
                        B=B, warm_up_period=warm_up_period)
 
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
     with open(args.output_dir + args.data_name + '.topWords','w') as f:
         for x in range(n_topic):
             twords = [(n, phi[x][n]) for n in range(vocab_size)]
