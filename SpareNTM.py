@@ -12,8 +12,6 @@ flags = tf.flags
 flags.DEFINE_integer('n_hidden', 500, 'Size of each hidden layer.')
 flags.DEFINE_boolean('test', True, 'Process test data.')
 flags.DEFINE_string('non_linearity', 'relu', 'Non-linearity of the MLP.')
-flags.DEFINE_string("topN_file", 'output/SpareNTM.topWords', 'output topWords')
-flags.DEFINE_string("theta_file", 'output/SpareNTM.theta', 'output topWords')
 FLAGS = flags.FLAGS
 
 
@@ -147,10 +145,10 @@ class SpareNTM(object):
                                                    + list(zip(enc_alpha_grads, enc_alpha_vars))
                                                    )
         self.optim_dec = optimizer.apply_gradients(zip(dec_grads, dec_vars))
-        self.optim_all = optimizer.apply_gradients(list(zip(enc_trans_grads, enc_trans_vars))
-                                                   + list(zip(enc_bern_grads, enc_bern_vars))
-                                                   + list(zip(enc_alpha_grads, enc_alpha_vars))
-                                                   + list(zip(dec_grads, dec_vars)))
+        # self.optim_all = optimizer.apply_gradients(list(zip(enc_trans_grads, enc_trans_vars))
+        #                                            + list(zip(enc_bern_grads, enc_bern_vars))
+        #                                            + list(zip(enc_alpha_grads, enc_alpha_vars))
+        #                                            + list(zip(dec_grads, dec_vars)))
 
 # Transformation and its derivative
 def gamma_h(epsilon, alpha):
@@ -209,8 +207,8 @@ def train(sess, model,
     test_batches = utils.create_batches(len(test_set), batch_size, shuffle=False)
 
     optimize_jointly = False
-    warm_up = 0.
-    tem_init = 5.
+    warm_up = 1.
+    tem_init = 10.
     tem = tem_init
     tem_min = 1.
     min_alpha = 0.00001
@@ -249,6 +247,14 @@ def train(sess, model,
                 print_mode = 'updating encoder'
 
             for i in range(alternate_epochs):
+                # if warm_up < 1.:
+                #     warm_up += 1. / warm_up_period
+                # else:
+                #     warm_up = 1.
+                # if tem > tem_min:
+                #     tem -= tem_init / warm_up_period
+                # else:
+                #     tem = tem_min
                 loss_sum = 0.0
                 dir_kld_sum_train = 0.0
                 bern_kld_sum_train=0.0
@@ -278,6 +284,8 @@ def train(sess, model,
                       '| Recon Loss: {:.5}'.format(print_rec_loss),
                       '| KLD dir: {:.5}'.format(print_dir_kld_train),
                       '| KLD bern: {:.5f}'.format(print_bern_kld_train),
+                      tem,
+                      warm_up
                       )
 
         # -------------------------------
@@ -346,9 +354,9 @@ def train(sess, model,
                 bern_sum_test += np.sum(bern_kld_test) / np.sum(mask)
                 recon_sum += np.sum(recon)/np.sum(mask)
             print_loss = loss_sum / len(test_batches)
-            print_dir_test = dir_sum_test / len(dev_batches)
-            print_bern_test = bern_sum_test / len(dev_batches)
-            print_recon = recon_sum / len(dev_batches)
+            print_dir_test = dir_sum_test / len(test_batches)
+            print_bern_test = bern_sum_test / len(test_batches)
+            print_recon = recon_sum / len(test_batches)
             print('| Epoch test: {:d} |'.format(epoch + 1),
                   '| Loss: {:.5}'.format(print_loss),
                   '| KLD dir: {:.5}'.format(print_dir_test),
@@ -410,6 +418,8 @@ def main(argv=None):
     argparser.add_argument('--warm_up_period', default=100, type=int)
     argparser.add_argument('--data_dir', default='./data/20ng', type=str)
     argparser.add_argument('--data_name', default="", type=str)
+    argparser.add_argument('--output_dir', default="output/", type=str)
+
 
     args = argparser.parse_args()
     adam_beta1 = args.adam_beta1
@@ -437,39 +447,38 @@ def main(argv=None):
     train_test_idxes = list(range(tr_len)), list(range(tr_len, tr_len + te_len))
 
     vocab_size = num_words
-    for i in range(1,4):
-        sparentm = SpareNTM(
-                    vocab_size=vocab_size,
-                    n_hidden=FLAGS.n_hidden,
-                    n_topic=n_topic,
-                    learning_rate=learning_rate,
-                    batch_size=args.bs,
-                    non_linearity=non_linearity,
-                    adam_beta1=adam_beta1,
-                    adam_beta2=adam_beta2,
-                    dir_prior=dir_prior,
-                   bern_prior=bern)
-        sess = tf.Session()
-        init = tf.global_variables_initializer()
-        sess.run(init)
+    sparentm = SpareNTM(
+                vocab_size=vocab_size,
+                n_hidden=FLAGS.n_hidden,
+                n_topic=n_topic,
+                learning_rate=learning_rate,
+                batch_size=args.bs,
+                non_linearity=non_linearity,
+                adam_beta1=adam_beta1,
+                adam_beta2=adam_beta2,
+                dir_prior=dir_prior,
+               bern_prior=bern)
+    sess = tf.Session()
+    init = tf.global_variables_initializer()
+    sess.run(init)
 
-        phi, theta, topic_selected, n_seleted = train(sess, sparentm, args.bs, vocab_size, corpus, counts, train_test_idxes,
-                           B=B, warm_up_period=warm_up_period)
+    phi, theta, topic_selected, n_seleted = train(sess, sparentm, args.bs, vocab_size, corpus, counts, train_test_idxes,
+                       B=B, warm_up_period=warm_up_period)
 
-        with open(FLAGS.topN_file,'w') as f:
-            for x in range(n_topic):
-                twords = [(n, phi[x][n]) for n in range(vocab_size)]
-                twords.sort(key=lambda i: i[1], reverse=True)
-                for y in range(20):
-                    word = id2word[twords[y][0]]
-                    f.write(word + '\t')
-                f.write('\n')
+    with open(args.output_dir + args.data_name + '.topWords','w') as f:
+        for x in range(n_topic):
+            twords = [(n, phi[x][n]) for n in range(vocab_size)]
+            twords.sort(key=lambda i: i[1], reverse=True)
+            for y in range(20):
+                word = id2word[twords[y][0]]
+                f.write(word + '\t')
+            f.write('\n')
 
-        with open(FLAGS.theta_file,'w') as f:
-            for x in range(len(corpus)):
-                for y in range(n_topic):
-                    f.write(str(theta[x][y]) + '\t')
-                f.write('\n')
+    with open(args.output_dir + args.data_name + '.theta','w') as f:
+        for x in range(len(corpus)):
+            for y in range(n_topic):
+                f.write(str(theta[x][y]) + '\t')
+            f.write('\n')
 
 if __name__ == '__main__':
     tf.app.run()
